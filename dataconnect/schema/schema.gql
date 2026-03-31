@@ -1,0 +1,41 @@
+type User @table {
+  displayName: String!
+  email: String!
+  role: String!
+  createdAt: Timestamp!
+  phoneNumber: String
+  photoUrl: String
+  school: School
+}
+
+type School @table {
+  name: String!
+  address: String!
+  createdAt: Timestamp!
+  contactEmail: String
+}
+
+type CallType @table {
+  name: String!
+  description: String!
+}
+
+type CallRequest @table {
+  teacher: User!
+  callType: CallType!
+  status: String!
+  roomNumber: String!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
+  notes: String
+  resolvedAt: Timestamp
+}
+
+type CallAssignment @table {
+  callRequest: CallRequest!
+  supportStaff: User!
+  assignedAt: Timestamp!
+  acknowledgedAt: Timestamp
+  onTheWayAt: Timestamp
+  resolvedAt: Timestamp
+}

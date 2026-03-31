@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── schools ──────────────────────────────────────────────
+    // 읽기: 누구나 (학교코드 검색 필요)
+    // 쓰기: 관리자 화면에서 클라이언트로 처리 (앱 레벨 인증으로 보호)
+    match /schools/{schoolId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // ── teachers ─────────────────────────────────────────────
+    // 읽기: 누구나 (schoolCode 기반 조회)
+    // 쓰기: 관리자 화면에서 클라이언트로 처리 (앱 레벨 인증으로 보호)
+    match /teachers/{teacherId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // ── calls ────────────────────────────────────────────────
+    // 읽기: 누구나 (schoolCode 필터는 쿼리에서 적용)
+    // 쓰기: 누구나 create 가능 (학생 호출), update는 교사(confirmedAt 업데이트)
+    match /calls/{callId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll([
+        'schoolCode', 'teacherId', 'studentName', 'calledAt'
+      ]);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['confirmedAt', 'confirmedBy']);
+      allow delete: if false;
+    }
+
+    // ── admins ───────────────────────────────────────────────
+    // 읽기: adminId 기반 조회 허용 (로그인 검증용)
+    // 쓰기: 완전 금지 (Firebase Console에서만 관리)
+    match /admins/{adminDocId} {
+      allow read: if true;
+      allow write: if false; // 완전 금지 (Firebase Console에서만 관리)
+    }
+
+    // ── teacherRequests ───────────────────────────────────────
+    // 읽기: 누구나 (관리자 화면에서 조회)
+    // 쓰기: create는 누구나 (가입 신청), update는 관리자만 (승인/거부)
+    match /teacherRequests/{requestId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll([
+        'name', 'schoolCode', 'officeGroup', 'passwordHash',
+        'status', 'requestedAt', 'reviewedAt', 'rejectionReason'
+      ]) && request.resource.data.status == 'pending';
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'reviewedAt', 'rejectionReason']);
+      allow delete: if false;
+    }
+  }
+}
