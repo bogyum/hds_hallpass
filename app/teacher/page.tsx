@@ -151,6 +151,9 @@ export default function TeacherPage() {
       if (!ok) { setLoginError("비밀번호가 올바르지 않습니다."); return; }
 
       await resumeAudioContext();
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
       soundType.current = loginSchool.soundType ?? "chime";
       setTeacher(t);
       setTeacherSchool(loginSchool);
@@ -254,11 +257,65 @@ export default function TeacherPage() {
       const freshCalls = newCalls.filter((c) => c.calledAt > sessionStart.current);
       if (freshCalls.length > lastCallCount.current) {
         const diff = freshCalls.length - lastCallCount.current;
+        const newCallsList = freshCalls.slice(0, diff);
+
         for (let i = 0; i < Math.min(diff, 3); i++) {
           const c = freshCalls[i];
           addBanner(`📣 ${c.studentName} 학생이 호출했습니다`);
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("학생 호출", {
+              body: `${c.studentName} 학생이 호출했습니다`,
+            });
+          }
         }
-        if (diff > 3) addBanner(`📣 외 ${diff - 3}건 더 있습니다`);
+        if (diff > 3) {
+          addBanner(`📣 외 ${diff - 3}건 더 있습니다`);
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("학생 호출", {
+              body: `외 ${diff - 3}건의 호출이 더 있습니다`,
+            });
+          }
+        }
+
+        if (diff > 0) {
+          try {
+            const popup = window.open("", `CallPopup_${Date.now()}`, "width=400,height=450,left=200,top=200");
+            if (popup) {
+              const itemsHtml = newCallsList.map(c => {
+                const t = c.calledAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                return `<div style="background:white; padding:15px; border-radius:12px; margin-bottom:10px; box-shadow:0 2px 4px rgb(0 0 0 / 0.05); text-align:left; border-left: 4px solid #3b82f6;">
+                  <div style="font-size:20px; font-weight:bold; color:#1e293b;">${c.studentName} 학생</div>
+                  <div style="font-size:14px; color:#64748b; margin-top:5px;">호출 시간: ${t}</div>
+                </div>`;
+              }).join('');
+
+              popup.document.write(`
+                <html>
+                  <head>
+                    <title>학생 호출 알림</title>
+                    <meta charset="utf-8" />
+                  </head>
+                  <body style="margin:0; padding:20px; font-family:'Pretendard', sans-serif; background:#f1f5f9; display:flex; flex-direction:column; height:100vh; box-sizing:border-box;">
+                    <audio id="popupAudio" src="/sounds/call_chime.mp3" style="display:none;" autoplay></audio>
+                    <div style="text-align:center; margin-bottom:15px;">
+                      <div style="font-size:40px; margin-bottom:5px;">🚨</div>
+                      <h1 style="color:#0f172a; margin:0; font-size:20px;">선생님~ 질문있어요!</h1>
+                    </div>
+                    <div style="flex:1; overflow-y:auto; padding:5px;">
+                      ${itemsHtml}
+                    </div>
+                    <button onclick="window.close()" style="margin-top:15px; width:100%; padding:15px; background:#3b82f6; color:white; border:none; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; box-shadow:0 4px 6px -1px rgb(59 130 246 / 0.5);">확인 (창 닫기)</button>
+                  </body>
+                </html>
+              `);
+              popup.document.close();
+              popup.focus();
+            }
+          } catch(e) {
+            console.error("Popup blocked or failed", e);
+          }
+        }
+
         if (soundOnRef.current) {
           if (soundDebounceRef.current) clearTimeout(soundDebounceRef.current);
           soundDebounceRef.current = setTimeout(() => {

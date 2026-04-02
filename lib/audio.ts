@@ -45,35 +45,38 @@ export function playDing(volume = 0.7): void {
   }
 }
 
-/**
- * 차임벨 소리 (교사 알림, ~1.2초, 2회)
- */
+let chimeBuffer: AudioBuffer | null = null;
+
 export function playChime(volume = 0.7): void {
   try {
     const ctx = getAudioContext();
-    const freqs = [523.25, 659.25]; // C5, E5
-
-    freqs.forEach((freq, i) => {
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.5);
-
-      const startTime = ctx.currentTime + i * 0.5;
-      gainNode.gain.setValueAtTime(0, startTime);
-      gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.05);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.5);
-
-      oscillator.start(startTime);
-      oscillator.stop(startTime + 0.5);
-    });
+    
+    // 처음 한 번만 파일을 가져와서 디코딩 캐싱
+    if (!chimeBuffer) {
+      fetch("/sounds/call_chime.mp3")
+        .then((response) => response.arrayBuffer())
+        .then((data) => ctx.decodeAudioData(data))
+        .then((buffer) => {
+          chimeBuffer = buffer;
+          playBuffer(ctx, buffer, volume);
+        })
+        .catch((e) => console.warn("Failed to load chime:", e));
+    } else {
+      playBuffer(ctx, chimeBuffer, volume);
+    }
   } catch (e) {
     console.warn("Audio playback failed:", e);
   }
+}
+
+function playBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: number) {
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const gainNode = ctx.createGain();
+  gainNode.gain.value = Math.min(Math.max(volume, 0), 1);
+  source.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  source.start(0);
 }
 
 /**
