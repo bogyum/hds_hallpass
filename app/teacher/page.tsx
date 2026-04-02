@@ -7,9 +7,12 @@ import {
   getTeachersBySchool,
   subscribeToTeacherCalls,
   confirmAllCallsByTeacherAndStudent,
+  autoConfirmExpiredCalls,
   createTeacherRequest,
   getLatestRequestByNameAndSchool,
   updateTeacher,
+  uploadTeacherProfileImage,
+  deleteTeacherProfileImage,
   getSchoolsByName,
   getTeacherByNameAndSchool,
 } from "@/lib/firestore";
@@ -67,7 +70,15 @@ export default function TeacherPage() {
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
 
   // ── 정보 수정 ──
-  const [editingInfo, setEditingInfo] = useState<{name: string, subject: string, officeGroup: string, password: string} | null>(null);
+  const [editingInfo, setEditingInfo] = useState<{
+    name: string;
+    subject: string;
+    officeGroup: string;
+    password: string;
+    profileImageFile: File | null;
+    profileImagePreview: string | null;
+    removeProfileImage: boolean;
+  } | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
   const [editSuccess, setEditSuccess] = useState(false);
@@ -80,7 +91,6 @@ export default function TeacherPage() {
   const soundDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStart = useRef(new Date());
   const soundType = useRef<SoundType>("chime");
-  const callsRef = useRef<Call[]>([]);
 
   // localStorage에서 알림음 설정 로드
   useEffect(() => {
@@ -331,29 +341,13 @@ export default function TeacherPage() {
     return () => { unsub(); };
   }, [teacher, phase, addBanner]);
 
-  // ── 10분 경과 자동 확인 ──
-  useEffect(() => {
-    callsRef.current = calls;
-  }, [calls]);
-
+  // ── 10분 경과 자동 확인 (1분마다 학교 전체 검사) ──
   useEffect(() => {
     if (!teacher || phase !== "dashboard") return;
+    autoConfirmExpiredCalls(teacher.schoolCode).catch(() => {});
     const interval = setInterval(() => {
-      const now = new Date().getTime();
-      const tenMins = 10 * 60 * 1000;
-      
-      const studentsToConfirm = new Set<string>();
-      callsRef.current.forEach((call) => {
-        if (now - call.calledAt.getTime() >= tenMins) {
-          studentsToConfirm.add(call.studentName);
-        }
-      });
-      
-      studentsToConfirm.forEach((studentName) => {
-        confirmAllCallsByTeacherAndStudent(teacher.id, studentName, teacher.schoolCode).catch(() => {});
-      });
-    }, 60 * 1000); // 1분마다 검사
-    
+      autoConfirmExpiredCalls(teacher.schoolCode).catch(() => {});
+    }, 60 * 1000);
     return () => clearInterval(interval);
   }, [teacher, phase]);
 
@@ -373,17 +367,28 @@ export default function TeacherPage() {
     setEditLoading(true);
     setEditError("");
     try {
+      let profileImageUrl: string | null = teacher.profileImageUrl ?? null;
+
+      if (editingInfo.removeProfileImage) {
+        try { await deleteTeacherProfileImage(teacher.id); } catch {}
+        profileImageUrl = null;
+      } else if (editingInfo.profileImageFile) {
+        profileImageUrl = await uploadTeacherProfileImage(teacher.id, editingInfo.profileImageFile);
+      }
+
       await updateTeacher(teacher.id, {
         name: editingInfo.name.trim(),
         subject: editingInfo.subject.trim(),
         officeGroup: editingInfo.officeGroup as OfficeGroup,
-        ...(editingInfo.password ? { password: editingInfo.password } : {})
+        ...(editingInfo.password ? { password: editingInfo.password } : {}),
+        profileImageUrl,
       });
       setTeacher({
         ...teacher,
         name: editingInfo.name.trim(),
         subject: editingInfo.subject.trim(),
         officeGroup: editingInfo.officeGroup as OfficeGroup,
+        profileImageUrl,
       });
       setEditSuccess(true);
       setTimeout(() => {
@@ -764,7 +769,10 @@ export default function TeacherPage() {
               name: teacher!.name,
               subject: teacher!.subject || "",
               officeGroup: teacher!.officeGroup,
-              password: ""
+              password: "",
+              profileImageFile: null,
+              profileImagePreview: teacher!.profileImageUrl || null,
+              removeProfileImage: false,
             })}
               className="text-xl w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition"
               title="프로필 수정">
@@ -849,6 +857,44 @@ export default function TeacherPage() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
             <h3 className="font-bold text-slate-800 mb-4">내 정보 수정</h3>
             <form onSubmit={handleUpdateInfo} className="space-y-3">
+              {/* 프로필 이미지 */}
+              <div>
+                <label className="form-label">프로필 이미지</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center flex-shrink-0 border-2 border-slate-200">
+                    {editingInfo.profileImagePreview && !editingInfo.removeProfileImage ? (
+                      <img src={editingInfo.profileImagePreview} alt="프로필" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-2xl">👨‍🏫</span>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <label className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 text-xs font-medium cursor-pointer hover:bg-slate-100 transition">
+                      📷 이미지 선택
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const preview = URL.createObjectURL(file);
+                          setEditingInfo({ ...editingInfo, profileImageFile: file, profileImagePreview: preview, removeProfileImage: false });
+                        }}
+                      />
+                    </label>
+                    {(editingInfo.profileImagePreview || teacher?.profileImageUrl) && !editingInfo.removeProfileImage && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingInfo({ ...editingInfo, profileImageFile: null, profileImagePreview: null, removeProfileImage: true })}
+                        className="w-full text-xs text-red-500 hover:text-red-700 py-1 transition"
+                      >
+                        이미지 삭제
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div>
                 <label className="form-label">이름</label>
                 <input type="text" value={editingInfo.name}

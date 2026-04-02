@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 교사 프로필 이미지: 누구나 읽기, 앱 레벨에서 교사 본인만 쓰기
+    match /teachers/{teacherId}/profile {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

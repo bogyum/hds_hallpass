@@ -9,6 +9,7 @@ import {
   createCall,
   subscribeToSchoolCalls,
   subscribeToLatestConfirmedCall,
+  autoConfirmExpiredCalls,
 } from "@/lib/firestore";
 import { verifyPassword } from "@/lib/hash";
 import { playSound, resumeAudioContext } from "@/lib/audio";
@@ -103,7 +104,7 @@ export default function StudentPage() {
     }
   };
 
-  // 실시간 구독
+  // 실시간 구독 + 10분 경과 호출 자동 확인
   useEffect(() => {
     if (!school) return;
     const unsub1 = subscribeToSchoolCalls(school.schoolCode, setWaitListCalls);
@@ -116,7 +117,14 @@ export default function StudentPage() {
         setTimeout(() => setConfirmedTeacherName(null), 3000);
       }
     });
-    return () => { unsub1(); unsub2(); };
+
+    // 키오스크는 항상 켜져 있으므로, 교사 미로그인 상태에서도 자동 확인
+    autoConfirmExpiredCalls(school.schoolCode).catch(() => {});
+    const autoConfirmInterval = setInterval(() => {
+      autoConfirmExpiredCalls(school.schoolCode).catch(() => {});
+    }, 60 * 1000);
+
+    return () => { unsub1(); unsub2(); clearInterval(autoConfirmInterval); };
   }, [school, teachers]);
 
   const uniqueWaitList = waitListCalls.reduce<Call[]>((acc, call) => {
@@ -305,9 +313,15 @@ export default function StudentPage() {
                     cursor-pointer text-sm
                   "
                 >
-                  <span className="block text-2xl mb-1">👨‍🏫</span>
-                  <span className="block">{teacher.name}</span>
-                  {teacher.subject && <span className="block text-xs text-slate-400 font-normal mt-0.5">{teacher.subject}</span>}
+                  {teacher.profileImageUrl ? (
+                    <div className="w-8 h-8 rounded-full overflow-hidden mx-auto mb-1">
+                      <img src={teacher.profileImageUrl} alt={teacher.name} className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <span className="block text-2xl mb-1">👨‍🏫</span>
+                  )}
+                  <span className="block text-xl">{teacher.name}</span>
+                  {teacher.subject && <span className="block text-sm text-slate-400 font-normal mt-0.5">{teacher.subject}</span>}
                 </button>
               ))}
             </div>

@@ -14,7 +14,8 @@ import {
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, storage } from "./firebase";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import type { School, Teacher, Call, Admin, SoundType, OfficeGroup, OfficeGroupItem, TeacherRequest } from "@/types";
 import { hashPassword } from "./hash";
 
@@ -144,6 +145,7 @@ export async function updateTeacher(
     officeGroup: OfficeGroup;
     password: string;
     isActive: boolean;
+    profileImageUrl: string | null;
   }>
 ): Promise<void> {
   const update: Record<string, unknown> = { ...data };
@@ -156,6 +158,17 @@ export async function updateTeacher(
 
 export async function deleteTeacher(id: string): Promise<void> {
   await updateDoc(doc(db, "teachers", id), { isActive: false });
+}
+
+export async function uploadTeacherProfileImage(teacherId: string, file: File): Promise<string> {
+  const storageRef = ref(storage, `teachers/${teacherId}/profile`);
+  const snapshot = await uploadBytes(storageRef, file, { contentType: file.type });
+  return getDownloadURL(snapshot.ref);
+}
+
+export async function deleteTeacherProfileImage(teacherId: string): Promise<void> {
+  const storageRef = ref(storage, `teachers/${teacherId}/profile`);
+  await deleteObject(storageRef);
 }
 
 // =====================
@@ -182,6 +195,32 @@ export async function confirmCall(callId: string, teacherId: string): Promise<vo
     confirmedAt: serverTimestamp(),
     confirmedBy: teacherId,
   });
+}
+
+/**
+ * 학교 전체에서 10분 이상 경과한 미확인 호출을 자동 확인 처리
+ */
+export async function autoConfirmExpiredCalls(schoolCode: string): Promise<void> {
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const q = query(
+    collection(db, "calls"),
+    where("schoolCode", "==", schoolCode),
+    where("confirmedAt", "==", null)
+  );
+  const snap = await getDocs(q);
+  const expired = snap.docs.filter((d) => {
+    const calledAt = (d.data().calledAt as Timestamp)?.toDate();
+    return calledAt && calledAt < tenMinutesAgo;
+  });
+  if (expired.length === 0) return;
+  await Promise.all(
+    expired.map((d) =>
+      updateDoc(d.ref, {
+        confirmedAt: serverTimestamp(),
+        confirmedBy: "AUTO",
+      })
+    )
+  );
 }
 
 export async function confirmAllCallsByTeacherAndStudent(

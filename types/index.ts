@@ -46,10 +46,11 @@ export interface Teacher {
   id: string;
   schoolCode: string;
   name: string;
-  subject?: string;      // 과목 (예: "수학", "문학 2" 등)
-  officeGroup: string;   // 학교별 커스텀 코드 (예: "office_1", "teachers_room" 등)
-  passwordHash: string;  // SHA-256 해시
+  subject?: string;           // 과목 (예: "수학", "문학 2" 등)
+  officeGroup: string;        // 학교별 커스텀 코드 (예: "office_1", "teachers_room" 등)
+  passwordHash: string;       // SHA-256 해시
   isActive: boolean;
+  profileImageUrl?: string | null;  // Firebase Storage 프로필 이미지 URL
 }
 
 export interface Call {
