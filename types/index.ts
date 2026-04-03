@@ -42,6 +42,8 @@ export interface School {
   officeGroups: OfficeGroupItem[];  // 학교별 교무실 목록
 }
 
+export type TeacherStatus = "online" | "offline" | "away";
+
 export interface Teacher {
   id: string;
   schoolCode: string;
@@ -51,6 +53,7 @@ export interface Teacher {
   passwordHash: string;       // SHA-256 해시
   isActive: boolean;
   profileImageUrl?: string | null;  // Firebase Storage 프로필 이미지 URL
+  status?: TeacherStatus;     // 온라인 상태 (기본값: offline)
 }
 
 export interface Call {

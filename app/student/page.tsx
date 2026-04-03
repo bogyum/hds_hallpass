@@ -10,11 +10,12 @@ import {
   subscribeToSchoolCalls,
   subscribeToLatestConfirmedCall,
   autoConfirmExpiredCalls,
+  subscribeToTeacherStatuses,
 } from "@/lib/firestore";
 import { verifyPassword } from "@/lib/hash";
 import { playSound, resumeAudioContext } from "@/lib/audio";
 import { OFFICE_GROUPS, OFFICE_LABELS } from "@/types";
-import type { School, Teacher, SoundType, OfficeGroupItem, Call } from "@/types";
+import type { School, Teacher, SoundType, OfficeGroupItem, Call, TeacherStatus } from "@/types";
 
 type Phase = "login" | "calling";
 
@@ -30,6 +31,7 @@ export default function StudentPage() {
 
   const [school, setSchool] = useState<School | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [teacherStatuses, setTeacherStatuses] = useState<Record<string, TeacherStatus>>({});
   const [waitListCalls, setWaitListCalls] = useState<Call[]>([]);
   const [isWaitListOpen, setIsWaitListOpen] = useState(false);
   const [confirmedTeacherName, setConfirmedTeacherName] = useState<string | null>(null);
@@ -117,6 +119,7 @@ export default function StudentPage() {
         setTimeout(() => setConfirmedTeacherName(null), 3000);
       }
     });
+    const unsub3 = subscribeToTeacherStatuses(school.schoolCode, setTeacherStatuses);
 
     // 키오스크는 항상 켜져 있으므로, 교사 미로그인 상태에서도 자동 확인
     autoConfirmExpiredCalls(school.schoolCode).catch(() => {});
@@ -124,7 +127,7 @@ export default function StudentPage() {
       autoConfirmExpiredCalls(school.schoolCode).catch(() => {});
     }, 60 * 1000);
 
-    return () => { unsub1(); unsub2(); clearInterval(autoConfirmInterval); };
+    return () => { unsub1(); unsub2(); unsub3(); clearInterval(autoConfirmInterval); };
   }, [school, teachers]);
 
   const uniqueWaitList = waitListCalls.reduce<Call[]>((acc, call) => {
@@ -302,28 +305,50 @@ export default function StudentPage() {
               </h2>
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-              {grouped.find(g => g.group === selectedOfficeCode)?.teachers.map((teacher) => (
-                <button
-                  key={teacher.id}
-                  onClick={() => { setSelectedTeacher(teacher); setStudentName(""); setCallError(""); }}
-                  className="
-                    card p-4 text-center font-semibold text-slate-700
-                    hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700
-                    active:scale-95 transition-all duration-150
-                    cursor-pointer text-sm
-                  "
-                >
-                  {teacher.profileImageUrl ? (
-                    <div className="w-8 h-8 rounded-full overflow-hidden mx-auto mb-1">
-                      <img src={teacher.profileImageUrl} alt={teacher.name} className="w-full h-full object-cover" />
-                    </div>
-                  ) : (
-                    <span className="block text-2xl mb-1">👨‍🏫</span>
-                  )}
-                  <span className="block text-xl">{teacher.name}</span>
-                  {teacher.subject && <span className="block text-sm text-slate-400 font-normal mt-0.5">{teacher.subject}</span>}
-                </button>
-              ))}
+              {grouped.find(g => g.group === selectedOfficeCode)?.teachers.map((teacher) => {
+                const status = teacherStatuses[teacher.id] ?? "offline";
+                const isOnline = status === "online";
+                return (
+                  <button
+                    key={teacher.id}
+                    onClick={() => {
+                      if (!isOnline) return;
+                      setSelectedTeacher(teacher); setStudentName(""); setCallError("");
+                    }}
+                    disabled={!isOnline}
+                    className={`
+                      card p-4 text-center font-semibold relative
+                      transition-all duration-150 text-sm
+                      ${isOnline
+                        ? "text-slate-700 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 active:scale-95 cursor-pointer"
+                        : "text-slate-400 cursor-not-allowed opacity-70"
+                      }
+                    `}
+                  >
+                    {/* LED 상태 점 */}
+                    <span className={`absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full ${
+                      status === "online" ? "bg-green-500" :
+                      status === "away" ? "bg-orange-400" :
+                      "bg-gray-400"
+                    }`} />
+                    {teacher.profileImageUrl ? (
+                      <div className="w-8 h-8 rounded-full overflow-hidden mx-auto mb-1">
+                        <img src={teacher.profileImageUrl} alt={teacher.name} className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <span className="block text-2xl mb-1">👨‍🏫</span>
+                    )}
+                    <span className="block text-xl">{teacher.name}</span>
+                    {teacher.subject && <span className="block text-sm text-slate-400 font-normal mt-0.5">{teacher.subject}</span>}
+                    {status === "away" && (
+                      <span className="block text-xs text-orange-500 font-semibold mt-0.5">자리비움</span>
+                    )}
+                    {status === "offline" && (
+                      <span className="block text-xs text-gray-400 font-semibold mt-0.5">오프라인</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}

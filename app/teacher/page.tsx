@@ -15,11 +15,12 @@ import {
   deleteTeacherProfileImage,
   getSchoolsByName,
   getTeacherByNameAndSchool,
+  setTeacherStatus as updateTeacherStatusInDB,
 } from "@/lib/firestore";
 import { verifyPassword } from "@/lib/hash";
 import { playChime, playDing, playBeep, resumeAudioContext } from "@/lib/audio";
 import { OFFICE_GROUPS, OFFICE_LABELS } from "@/types";
-import type { Teacher, Call, SoundType, OfficeGroup, School } from "@/types";
+import type { Teacher, Call, SoundType, OfficeGroup, School, TeacherStatus } from "@/types";
 
 interface BannerItem {
   id: string;
@@ -68,6 +69,7 @@ export default function TeacherPage() {
   const [teacherSchool, setTeacherSchool] = useState<School | null>(null);
   const [calls, setCalls] = useState<Call[]>([]);
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
+  const [teacherStatus, setTeacherStatus] = useState<TeacherStatus>("offline");
 
   // ── 정보 수정 ──
   const [editingInfo, setEditingInfo] = useState<{
@@ -168,6 +170,8 @@ export default function TeacherPage() {
       setTeacher(t);
       setTeacherSchool(loginSchool);
       sessionStart.current = new Date();
+      setTeacherStatus("online");
+      await updateTeacherStatusInDB(t.id, "online").catch(() => {});
       setPhase("dashboard");
     } catch {
       setLoginError("로그인 중 오류가 발생했습니다.");
@@ -409,9 +413,13 @@ export default function TeacherPage() {
   }, {});
 
   const resetToLogin = () => {
+    if (teacher) {
+      updateTeacherStatusInDB(teacher.id, "offline").catch(() => {});
+    }
     setPhase("login");
     setTeacher(null);
     setCalls([]);
+    setTeacherStatus("offline");
     setLoginSchoolName("");
     setLoginSchoolLoaded(false);
     setLoginSchool(null);
@@ -764,7 +772,34 @@ export default function TeacherPage() {
               {teacher && teacherSchool ? (teacherSchool.officeGroups?.find(g => g.code === teacher.officeGroup)?.label || OFFICE_LABELS[teacher.officeGroup] || teacher.officeGroup) : ""}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* 상태 토글 */}
+            <div className="flex items-center gap-1 bg-slate-100 rounded-full p-1">
+              <button
+                onClick={async () => {
+                  setTeacherStatus("online");
+                  if (teacher) await updateTeacherStatusInDB(teacher.id, "online").catch(() => {});
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition ${
+                  teacherStatus === "online" ? "bg-green-500 text-white shadow-sm" : "text-slate-500 hover:bg-white"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full inline-block ${teacherStatus === "online" ? "bg-white" : "bg-green-400"}`} />
+                온라인
+              </button>
+              <button
+                onClick={async () => {
+                  setTeacherStatus("away");
+                  if (teacher) await updateTeacherStatusInDB(teacher.id, "away").catch(() => {});
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition ${
+                  teacherStatus === "away" ? "bg-orange-400 text-white shadow-sm" : "text-slate-500 hover:bg-white"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full inline-block ${teacherStatus === "away" ? "bg-white" : "bg-orange-400"}`} />
+                자리비움
+              </button>
+            </div>
             <button onClick={() => setEditingInfo({
               name: teacher!.name,
               subject: teacher!.subject || "",

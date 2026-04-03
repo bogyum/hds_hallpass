@@ -7,11 +7,12 @@ import {
   getSchoolsByName,
   getTeachersBySchool,
   subscribeToAllTeacherCallCounts,
+  subscribeToTeacherStatuses,
 } from "@/lib/firestore";
 import { verifyPassword } from "@/lib/hash";
 import { playAlert, resumeAudioContext } from "@/lib/audio";
 import { OFFICE_GROUPS, OFFICE_LABELS } from "@/types";
-import type { School, Teacher, OfficeGroupItem } from "@/types";
+import type { School, Teacher, OfficeGroupItem, TeacherStatus } from "@/types";
 
 type Phase = "login" | "dashboard";
 
@@ -28,6 +29,7 @@ export default function OfficePage() {
   const [school, setSchool] = useState<School | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [callCounts, setCallCounts] = useState<Record<string, number>>({});
+  const [teacherStatuses, setTeacherStatuses] = useState<Record<string, TeacherStatus>>({});
   const [selectedOfficeCode, setSelectedOfficeCode] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -80,8 +82,9 @@ export default function OfficePage() {
 
   useEffect(() => {
     if (!school) return;
-    const unsub = subscribeToAllTeacherCallCounts(school.schoolCode, setCallCounts);
-    return unsub;
+    const unsub1 = subscribeToAllTeacherCallCounts(school.schoolCode, setCallCounts);
+    const unsub2 = subscribeToTeacherStatuses(school.schoolCode, setTeacherStatuses);
+    return () => { unsub1(); unsub2(); };
   }, [school]);
 
   const officeList = school?.officeGroups?.length 
@@ -246,6 +249,7 @@ export default function OfficePage() {
                   {groupTeachers.map((teacher) => {
                     const count = callCounts[teacher.id] ?? 0;
                     const hasCall = count > 0;
+                    const status = teacherStatuses[teacher.id] ?? "offline";
                     return (
                       <div key={teacher.id}
                         className={`
@@ -256,6 +260,12 @@ export default function OfficePage() {
                           }
                         `}
                       >
+                        {/* LED 상태 점 */}
+                        <span className={`absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full ${
+                          status === "online" ? "bg-green-500" :
+                          status === "away" ? "bg-orange-400" :
+                          "bg-gray-400"
+                        }`} />
                         <span className={`block mb-1 ${hasCall ? "text-3xl" : "text-2xl opacity-40"}`}>
                           {hasCall ? "🔔" : "⬜"}
                         </span>

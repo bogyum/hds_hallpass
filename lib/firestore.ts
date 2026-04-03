@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 import { db, storage } from "./firebase";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import type { School, Teacher, Call, Admin, SoundType, OfficeGroup, OfficeGroupItem, TeacherRequest } from "@/types";
+import type { School, Teacher, Call, Admin, SoundType, OfficeGroup, OfficeGroupItem, TeacherRequest, TeacherStatus } from "@/types";
 import { hashPassword } from "./hash";
 
 // =====================
@@ -169,6 +169,28 @@ export async function uploadTeacherProfileImage(teacherId: string, file: File): 
 export async function deleteTeacherProfileImage(teacherId: string): Promise<void> {
   const storageRef = ref(storage, `teachers/${teacherId}/profile`);
   await deleteObject(storageRef);
+}
+
+export async function setTeacherStatus(teacherId: string, status: TeacherStatus): Promise<void> {
+  await updateDoc(doc(db, "teachers", teacherId), { status });
+}
+
+export function subscribeToTeacherStatuses(
+  schoolCode: string,
+  callback: (statuses: Record<string, TeacherStatus>) => void
+): () => void {
+  const q = query(
+    collection(db, "teachers"),
+    where("schoolCode", "==", schoolCode),
+    where("isActive", "==", true)
+  );
+  return onSnapshot(q, (snap) => {
+    const statuses: Record<string, TeacherStatus> = {};
+    snap.docs.forEach((d) => {
+      statuses[d.id] = (d.data().status as TeacherStatus) ?? "offline";
+    });
+    callback(statuses);
+  });
 }
 
 // =====================
